@@ -46,7 +46,7 @@ public class TestRenderer {
     private final String no_vulnerable_response =
         "{" +
         "  \"ok\": true," +
-        "  \"dependencyCount\": 3," +
+        "  \"dependencyCount\": 2," +
         "  \"vulnerabilities\": []" +
         "}";
 
