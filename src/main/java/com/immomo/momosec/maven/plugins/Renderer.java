@@ -17,7 +17,6 @@ package com.immomo.momosec.maven.plugins;
 
 import com.google.gson.*;
 import com.immomo.momosec.maven.plugins.exceptions.FoundVulnerableException;
-import com.immomo.momosec.maven.plugins.exceptions.NetworkErrorException;
 import org.apache.maven.plugin.logging.Log;
 
 import java.io.*;
@@ -34,7 +33,7 @@ public class Renderer {
         this.failOnVuln = failOnVuln;
     }
 
-    public void renderResponse(JsonObject responseJson) throws NetworkErrorException, FoundVulnerableException {
+    public void renderResponse(JsonObject responseJson) throws FoundVulnerableException {
         if(responseJson.get("ok") != null && responseJson.get("ok").getAsBoolean()) {
             String ok = "✓ Tested %s dependencies, no vulnerable found.";
             getLog().info(logHelper.strongInfo(String.format(ok, responseJson.get("dependencyCount").getAsString())));
@@ -93,10 +92,9 @@ public class Renderer {
         outputStream.close();
     }
 
-    public static void writeToFile(String filename, String jsonTree, JsonObject responseJson) throws IOException, NetworkErrorException {
+    public static void writeToFile(String filename, String jsonTree, JsonObject responseJson) throws IOException {
         File file = new File(filename);
-        JsonParser parser = new JsonParser();
-        JsonObject result = parser.parse(jsonTree).getAsJsonObject();
+        JsonObject result = JsonParser.parseString(jsonTree).getAsJsonObject();
         result.add("ok", responseJson.get("ok"));
         result.add("dependencyCount", responseJson.get("dependencyCount"));
         result.add("vulnerabilities", responseJson.get("vulnerabilities"));
