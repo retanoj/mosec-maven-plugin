@@ -20,6 +20,7 @@ import com.immomo.momosec.maven.plugins.exceptions.FoundVulnerableException;
 import org.apache.maven.plugin.logging.Log;
 
 import java.io.*;
+import java.util.List;
 
 public class Renderer {
 
@@ -80,32 +81,17 @@ public class Renderer {
         return log;
     }
 
-    public static void writeToFile(String filename, String jsonTree) throws IOException {
+    public static void writeToFile(String filename, List<String> collectTree) throws IOException {
         File file = new File(filename);
         if (!file.exists()) {
             File dir = new File(file.getAbsoluteFile().getParent());
             dir.mkdirs();
             file.createNewFile();
         }
+        JsonArray jsonArray = new JsonArray();
+        collectTree.stream().map(JsonParser::parseString).forEach(jsonArray::add);
         FileOutputStream outputStream = new FileOutputStream(file);
-        outputStream.write(jsonTree.getBytes());
-        outputStream.close();
-    }
-
-    public static void writeToFile(String filename, String jsonTree, JsonObject responseJson) throws IOException {
-        File file = new File(filename);
-        JsonObject result = JsonParser.parseString(jsonTree).getAsJsonObject();
-        result.add("ok", responseJson.get("ok"));
-        result.add("dependencyCount", responseJson.get("dependencyCount"));
-        result.add("vulnerabilities", responseJson.get("vulnerabilities"));
-        if (!file.exists()) {
-            File dir = new File(file.getAbsoluteFile().getParent());
-            dir.mkdirs();
-            file.createNewFile();
-        }
-        String jsonResult = new GsonBuilder().setPrettyPrinting().create().toJson(result);
-        FileOutputStream outputStream = new FileOutputStream(file);
-        outputStream.write(jsonResult.getBytes());
+        outputStream.write(new GsonBuilder().setPrettyPrinting().create().toJson(jsonArray).getBytes());
         outputStream.close();
     }
 }

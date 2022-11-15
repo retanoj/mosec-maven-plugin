@@ -23,7 +23,6 @@ import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.maven.plugin.AbstractMojo;
-import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.Mojo;
@@ -32,6 +31,7 @@ import org.apache.maven.project.MavenProject;
 import org.apache.maven.settings.Settings;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
+import org.eclipse.aether.SessionData;
 import org.eclipse.aether.collection.DependencyCollectionException;
 import org.eclipse.aether.repository.RemoteRepository;
 
@@ -41,7 +41,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.TreeSet;
-import java.util.stream.Collectors;
 
 import static com.immomo.momosec.maven.plugins.Renderer.writeToFile;
 
@@ -63,7 +62,7 @@ public class MosecTest extends AbstractMojo {
     @Parameter(defaultValue = "${project.remotePluginRepositories}", readonly = true)
     private List<RemoteRepository> remotePluginRepositories;
 
-    @Parameter(defaultValue = "${settings}", readonly = true, required = true )
+    @Parameter(defaultValue = "${settings}", readonly = true, required = true)
     private Settings settings;
 
     /**
@@ -108,10 +107,10 @@ public class MosecTest extends AbstractMojo {
     @Parameter(property = "onlyAnalyze", defaultValue = "false")
     private Boolean onlyAnalyze;
 
-    private static List<JsonObject> collectTree = new ArrayList<>();
     private static List<String> totalProjectsByGAV = null;
 
-    public void execute() throws MojoExecutionException, MojoFailureException {
+    @SuppressWarnings(value = {"unchecked"})
+    public void execute() throws MojoFailureException {
         String env_endpoint = System.getenv(Constants.MOSEC_ENDPOINT_ENV);
         if (env_endpoint != null) {
             endpoint = env_endpoint;
@@ -139,6 +138,18 @@ public class MosecTest extends AbstractMojo {
             List<RemoteRepository> remoteRepositories = new ArrayList<>(remoteProjectRepositories);
             remoteRepositories.addAll(remotePluginRepositories);
 
+            SessionData sessionData = repositorySystemSession.getData();
+            if (sessionData.get("collectTree") == null) {
+                sessionData.set("collectTree", new ArrayList<String>());
+            }
+            if (sessionData.get("collectGAV") == null) {
+                sessionData.set("collectGAV", new ArrayList<String>());
+            }
+
+            Gson gson = new GsonBuilder().setPrettyPrinting().create();
+            List<String> collectTree = (ArrayList<String>) sessionData.get("collectTree");
+            List<String> collectGAV = (ArrayList<String>) sessionData.get("collectGAV");
+
             ProjectDependencyCollector collector = new ProjectDependencyCollector(
                     project,
                     repositorySystem,
@@ -149,16 +160,18 @@ public class MosecTest extends AbstractMojo {
             );
             collector.collectDependencies();
             JsonObject projectTree = collector.getTree();
-            String jsonDepTree = new GsonBuilder().setPrettyPrinting().create().toJson(projectTree);
-            getLog().debug(jsonDepTree);
+            String jsonProjectTree = gson.toJson(projectTree);
+            getLog().debug(jsonProjectTree);
 
-            collectTree.add(projectTree.deepCopy());
+            collectTree.add(jsonProjectTree);
+            collectGAV.add(String.format(
+                    "%s:%s", projectTree.get("name").getAsString(), projectTree.get("version").getAsString()));
             if (Boolean.TRUE.equals(onlyAnalyze)) {
-                if (this.isAnalyzeTotalFinished()
+                if (this.isAnalyzeTotalFinished(collectGAV)
                         && outputDepToFile != null
                         && !"".equals(outputDepToFile)
                 ) {
-                    writeToFile(outputDepToFile, new GsonBuilder().setPrettyPrinting().create().toJson(collectTree));
+                    writeToFile(outputDepToFile, collectTree);
                 }
 
                 getLog().info("onlyAnalyze mode, Done.");
@@ -182,18 +195,20 @@ public class MosecTest extends AbstractMojo {
                 throw new NetworkErrorException(response.getStatusLine().getReasonPhrase());
             }
 
-            JsonParser parser = new JsonParser();
             JsonObject responseJson;
             try {
-                responseJson = parser.parse(new BufferedReader(new InputStreamReader(response.getEntity().getContent()))).getAsJsonObject();
-                JsonObject lastTree = collectTree.get(collectTree.size() - 1);
+                responseJson = JsonParser.parseReader(
+                        new BufferedReader(new InputStreamReader(response.getEntity().getContent()))
+                ).getAsJsonObject();
+                JsonObject lastTree = (JsonObject) JsonParser.parseString(collectTree.get(collectTree.size() - 1));
                 lastTree.add("result", responseJson);
+                collectTree.set(collectTree.size() - 1, gson.toJson(lastTree));
             } catch (JsonParseException | IllegalStateException e) {
                 throw new NetworkErrorException(Constants.ERROR_ON_API);
             }
 
             if (outputDepToFile != null && !"".equals(outputDepToFile)) {
-                writeToFile(outputDepToFile, new GsonBuilder().setPrettyPrinting().create().toJson(collectTree));
+                writeToFile(outputDepToFile, collectTree);
             }
 
             Renderer renderer = new Renderer(getLog(), failOnVuln);
@@ -201,9 +216,9 @@ public class MosecTest extends AbstractMojo {
 
         } catch (DependencyCollectionException e) {
             throw new MojoFailureException(e.getMessage(), e.fillInStackTrace());
-        } catch(MojoFailureException e) {
+        } catch (MojoFailureException e) {
             throw e;
-        } catch(Exception e) {
+        } catch (Exception e) {
             if (getLog().isDebugEnabled()) {
                 getLog().error(Constants.ERROR_GENERAL, e);
             } else {
@@ -215,26 +230,19 @@ public class MosecTest extends AbstractMojo {
     }
 
     @SuppressWarnings("unchecked")
-    private boolean isAnalyzeTotalFinished() {
+    private boolean isAnalyzeTotalFinished(List<String> analyzedProjectsByGAV) {
         if (totalProjectsByGAV == null) {
             Object key = repositorySystemSession.getWorkspaceReader().getRepository().getKey();
             if (key instanceof HashSet) {
-                HashSet<String> gavs = (HashSet<String>) key;
-                totalProjectsByGAV = (List<String>) gavs.stream().collect(Collectors.toList());
+                totalProjectsByGAV = new ArrayList<>((HashSet<String>) key);
             } else {
                 return false;
             }
         }
-        List<String> analyzedProjectsByGAV = collectTree.stream()
-                .map(o -> String.format("%s:%s", o.get("name").getAsString(), o.get("version").getAsString()))
-                .collect(Collectors.toList());
 
-        if (totalProjectsByGAV == null
-                || analyzedProjectsByGAV == null
-                || totalProjectsByGAV.size() != analyzedProjectsByGAV.size()
-        ) {
+        if (analyzedProjectsByGAV == null || totalProjectsByGAV.size() != analyzedProjectsByGAV.size()) {
             return false;
         }
-        return new TreeSet<String>(totalProjectsByGAV).equals(new TreeSet<String>(analyzedProjectsByGAV));
+        return new TreeSet<>(totalProjectsByGAV).equals(new TreeSet<>(analyzedProjectsByGAV));
     }
 }
