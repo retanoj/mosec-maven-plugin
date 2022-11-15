@@ -11,5 +11,7 @@ jobs:
         with:
           java-version: '11'
           distribution: 'adopt'
-      - name: Run tests with Maen
+      - name: Package plugin
+        run: mvn clean package -DskipTests=true
+      - name: Run tests
         run: mvn -B test

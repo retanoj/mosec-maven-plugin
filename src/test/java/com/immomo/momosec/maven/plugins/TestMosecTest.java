@@ -22,11 +22,14 @@ import org.apache.http.client.HttpClient;
 import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugin.testing.MojoRule;
 import org.apache.maven.plugin.testing.resources.TestResources;
+import org.eclipse.aether.DefaultSessionData;
 import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.artifact.DefaultArtifact;
 import org.eclipse.aether.collection.CollectResult;
 import org.eclipse.aether.graph.DefaultDependencyNode;
 import org.eclipse.aether.graph.DependencyNode;
+import org.eclipse.aether.repository.WorkspaceReader;
 import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
@@ -40,13 +43,14 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.powermock.api.mockito.PowerMockito.*;
 
 
 @RunWith(PowerMockRunner.class)
-@PrepareForTest({HttpClientHelper.class, MosecTest.class})
+@PrepareForTest(value = {HttpClientHelper.class, MosecTest.class})
 public class TestMosecTest {
 
     @Rule
@@ -85,6 +89,7 @@ public class TestMosecTest {
 
         MosecTest mosecTest = spy((MosecTest) this.rule.lookupMojo("test", pom));
 
+        RepositorySystemSession mockRepositorySystemSession = mock(RepositorySystemSession.class);
         RepositorySystem mockRepositorySystem = mock(RepositorySystem.class);
         CollectResult mockCollectResult = mock(CollectResult.class);
         DependencyNode mockRoot = new DefaultDependencyNode(
@@ -92,11 +97,18 @@ public class TestMosecTest {
 
         when(mosecTest.getLog()).thenReturn(mock(Log.class));
         when(mockRepositorySystem.collectDependencies(any(), any())).thenReturn(mockCollectResult);
+        when(mockRepositorySystemSession.getData()).thenReturn(new DefaultSessionData());
         when(mockCollectResult.getRoot()).thenReturn(mockRoot);
+
+        when(mosecTest, "isAnalyzeTotalFinished", any()).thenReturn(false);
 
         Field repoSystemField = mosecTest.getClass().getDeclaredField("repositorySystem");
         repoSystemField.setAccessible(true);
         repoSystemField.set(mosecTest, mockRepositorySystem);
+
+        Field repoSystemSession = mosecTest.getClass().getDeclaredField("repositorySystemSession");
+        repoSystemSession.setAccessible(true);
+        repoSystemSession.set(mosecTest, mockRepositorySystemSession);
 
         mosecTest.execute();
     }
@@ -107,6 +119,7 @@ public class TestMosecTest {
 
         MosecTest mosecTest = spy((MosecTest) this.rule.lookupMojo("test", pom));
 
+        RepositorySystemSession mockRepositorySystemSession = mock(RepositorySystemSession.class);
         RepositorySystem mockRepositorySystem = mock(RepositorySystem.class);
         CollectResult mockCollectResult = mock(CollectResult.class);
         DependencyNode mockRoot = new DefaultDependencyNode(
@@ -114,11 +127,18 @@ public class TestMosecTest {
 
         when(mosecTest.getLog()).thenReturn(mock(Log.class));
         when(mockRepositorySystem.collectDependencies(any(), any())).thenReturn(mockCollectResult);
+        when(mockRepositorySystemSession.getData()).thenReturn(new DefaultSessionData());
         when(mockCollectResult.getRoot()).thenReturn(mockRoot);
+
+        when(mosecTest, "isAnalyzeTotalFinished", any()).thenReturn(false);
 
         Field repoSystemField = mosecTest.getClass().getDeclaredField("repositorySystem");
         repoSystemField.setAccessible(true);
         repoSystemField.set(mosecTest, mockRepositorySystem);
+
+        Field repoSystemSession = mosecTest.getClass().getDeclaredField("repositorySystemSession");
+        repoSystemSession.setAccessible(true);
+        repoSystemSession.set(mosecTest, mockRepositorySystemSession);
 
         mosecTest.execute();
     }
@@ -139,6 +159,7 @@ public class TestMosecTest {
     private void failOnVulnPomRunner(File pom) throws Exception {
         MosecTest mosecTest = spy((MosecTest) this.rule.lookupMojo("test", pom));
 
+        RepositorySystemSession mockRepositorySystemSession = mock(RepositorySystemSession.class);
         RepositorySystem mockRepositorySystem = mock(RepositorySystem.class);
         CollectResult mockCollectResult = mock(CollectResult.class);
         DependencyNode mockRoot = new DefaultDependencyNode(
@@ -151,12 +172,14 @@ public class TestMosecTest {
 
         when(mosecTest.getLog()).thenReturn(mock(Log.class));
         when(mockRepositorySystem.collectDependencies(any(), any())).thenReturn(mockCollectResult);
+        when(mockRepositorySystemSession.getData()).thenReturn(new DefaultSessionData());
         when(mockCollectResult.getRoot()).thenReturn(mockRoot);
         whenNew(HttpClientHelper.class).withAnyArguments().thenReturn(mockHttpClientHelper);
         when(mockHttpClientHelper.buildHttpClient()).thenReturn(mockHttpClient);
         when(mockHttpClient.execute(any())).thenReturn(mockHttpResponse);
         when(mockHttpResponse.getStatusLine()).thenReturn(mockStatusLine);
         when(mockStatusLine.getStatusCode()).thenReturn(200);
+        when(mosecTest, "isAnalyzeTotalFinished", any()).thenReturn(false);
         String vuln = "{\"ok\":false, \"dependencyCount\": 2, \"vulnerabilities\":[{" +
                 "\"severity\": \"High\"," +
                 "\"title\": \"Fastjson RCE\"," +
@@ -172,6 +195,10 @@ public class TestMosecTest {
         Field repoSystemField = mosecTest.getClass().getDeclaredField("repositorySystem");
         repoSystemField.setAccessible(true);
         repoSystemField.set(mosecTest, mockRepositorySystem);
+
+        Field repoSystemSession = mosecTest.getClass().getDeclaredField("repositorySystemSession");
+        repoSystemSession.setAccessible(true);
+        repoSystemSession.set(mosecTest, mockRepositorySystemSession);
 
         mosecTest.execute();
     }

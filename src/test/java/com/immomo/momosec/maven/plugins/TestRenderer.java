@@ -79,8 +79,7 @@ public class TestRenderer {
     @Test
     public void renderResponseTest_NotFoundVuln() throws Exception {
         Renderer renderer = new Renderer(log, true);
-        JsonParser parser = new JsonParser();
-        renderer.renderResponse(parser.parse(no_vulnerable_response).getAsJsonObject());
+        renderer.renderResponse(JsonParser.parseString(no_vulnerable_response).getAsJsonObject());
 
         String expect = "[INFO] " + logHelper.strongInfo("✓ Tested 3 dependencies, no vulnerable found.") + "\n";
         Assert.assertEquals(expect, outContent.toString());
@@ -92,15 +91,13 @@ public class TestRenderer {
         exceptionRule.expectMessage(Constants.ERROR_ON_VULNERABLE);
 
         Renderer renderer = new Renderer(log, true);
-        JsonParser parser = new JsonParser();
-        renderer.renderResponse(parser.parse(vulnerable_response).getAsJsonObject());
+        renderer.renderResponse(JsonParser.parseString(vulnerable_response).getAsJsonObject());
     }
 
     @Test
     public void renderResponseTest_FoundVulnWithoutFailOnVuln() throws Exception {
         Renderer renderer = new Renderer(log, false);
-        JsonParser parser = new JsonParser();
-        renderer.renderResponse(parser.parse(vulnerable_response).getAsJsonObject());
+        renderer.renderResponse(JsonParser.parseString(vulnerable_response).getAsJsonObject());
 
         String expect =
                 "[WARNING] " + logHelper.strongError("✗ High severity (Fake Vulnerable - CVE-0001-0001) found on com.study.foo:bar@1.0.0") + "\n" +
