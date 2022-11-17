@@ -16,136 +16,139 @@
 package com.immomo.momosec.maven.plugins;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import org.apache.maven.model.Model;
+import org.apache.maven.artifact.Artifact;
+import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.project.MavenProject;
-import org.eclipse.aether.DefaultRepositorySystemSession;
-import org.eclipse.aether.RepositorySystem;
-import org.eclipse.aether.RepositorySystemSession;
-import org.eclipse.aether.artifact.Artifact;
-import org.eclipse.aether.artifact.DefaultArtifact;
-import org.eclipse.aether.collection.CollectRequest;
-import org.eclipse.aether.collection.CollectResult;
-import org.eclipse.aether.collection.DependencyCollectionException;
-import org.eclipse.aether.graph.Dependency;
-import org.eclipse.aether.graph.DependencyNode;
-import org.eclipse.aether.repository.RemoteRepository;
-import org.eclipse.aether.util.artifact.JavaScopes;
-import org.eclipse.aether.util.graph.selector.AndDependencySelector;
-import org.eclipse.aether.util.graph.selector.OptionalDependencySelector;
-import org.eclipse.aether.util.graph.selector.ScopeDependencySelector;
 
-import java.security.InvalidParameterException;
-import java.util.List;
-
-import static java.util.Arrays.asList;
-import static java.util.Collections.singletonList;
+import java.util.*;
 
 public class ProjectDependencyCollector {
 
     private final MavenProject project;
-    private final RepositorySystem repoSystem;
-    private final DefaultRepositorySystemSession session;
-    private final List<RemoteRepository> remoteRepositories;
-    private final boolean includeProvidedDependencies;
-    private final boolean onlyProvenance;
+    private final List<String> scope;
+    private final boolean transitive;
 
     private JsonObject tree;
 
-    public ProjectDependencyCollector(MavenProject project,
-                                      RepositorySystem repoSystem,
-                                      RepositorySystemSession repoSession,
-                                      List<RemoteRepository> remoteRepositories,
-                                      boolean includeProvidedDependencies,
-                                      boolean onlyProvenance) {
-        if(project == null || repoSystem == null || repoSession == null) {
-            throw new InvalidParameterException();
-        }
+    private final Log log;
 
+    public ProjectDependencyCollector(MavenProject project, Log log, String scope, boolean transitive) {
         this.project = project;
-        this.repoSystem = repoSystem;
-        this.session = new DefaultRepositorySystemSession(repoSession);
-        this.remoteRepositories = remoteRepositories;
-        this.includeProvidedDependencies = includeProvidedDependencies;
-        this.onlyProvenance = onlyProvenance;
+        this.log = log;
+        this.scope = scope == null ? Collections.emptyList() : Arrays.asList(scope.split(","));
+        this.transitive = transitive;
     }
 
-    public void collectDependencies() throws DependencyCollectionException {
-        Artifact artifact = new DefaultArtifact(
-                String.format("%s:%s:%s", project.getGroupId(), project.getArtifactId(), project.getVersion()));
+    public void collectDependencies() {
+        tree = createTreeNode(project.getArtifact());
 
-        if (includeProvidedDependencies) {
-            session.setDependencySelector(
-                new AndDependencySelector(
-                    new ScopeDependencySelector(
-                        asList(JavaScopes.COMPILE, JavaScopes.PROVIDED),
-                        singletonList(JavaScopes.TEST)
-                    ),
-                    new OptionalDependencySelector()
-                )
-            );
-        }
+        project.getArtifacts().forEach(this::addArtifactToTree);
 
-        CollectRequest collectRequest = new CollectRequest();
-        collectRequest.setRoot(new Dependency(artifact, JavaScopes.COMPILE));
-        collectRequest.setRepositories(remoteRepositories);
-
-        CollectResult collectResult = repoSystem.collectDependencies(session, collectRequest);
-        DependencyNode node = collectResult.getRoot();
-
-        this.tree = createJsonTree(node, null);
-        MavenProject parent = this.project.getParent();
-        if (parent == null) {
+        MavenProject parentProject = this.project.getParent();
+        if (parentProject == null) {
             this.tree.add("parent", new JsonObject());
         } else {
-            JsonObject jParent = new JsonObject();
-            jParent.addProperty("name", String.format("%s:%s", parent.getGroupId(), parent.getArtifactId()));
-            jParent.addProperty("version", parent.getVersion());
+            Artifact parent = parentProject.getArtifact();
+            JsonObject jParent = createTreeNode(parent);
+            jParent.remove("from");
+            jParent.remove("dependencies");
             this.tree.add("parent", jParent);
         }
 
-        tree.add("modules", (new Gson()).toJsonTree(this.project.getModules()).getAsJsonArray());
+        tree.add("modules", (new Gson()).toJsonTree(project.getModules()).getAsJsonArray());
     }
 
-    private JsonObject createJsonTree(DependencyNode depNode, JsonArray ancestors) {
-        Artifact artifact = depNode.getArtifact();
-        JsonObject treeNode = createTreeNode(artifact, ancestors);
+    private void addArtifactToTree(Artifact artifact) {
+        if (!transitive &&
+                artifact.getDependencyTrail() != null &&
+                artifact.getDependencyTrail().size() > 2
+        ) {
+            getLog().debug(String.format("ignore %s:%s:%s",
+                    artifact.getGroupId(), artifact.getArtifactId(), artifact.getBaseVersion()));
+            return ;
+        }
 
-        if (this.onlyProvenance && treeNode.get("from").getAsJsonArray().size() > 1) {
-            if (Boolean.FALSE.equals(treeNode.has("dependencies"))) {
-                treeNode.add("dependencies", new JsonObject());
+        if (!"".equals(artifact.getScope()) &&
+                !scope.isEmpty() &&
+                !scope.contains(artifact.getScope())
+        ) {
+            getLog().debug(String.format("ignore %s:%s:%s",
+                    artifact.getGroupId(), artifact.getArtifactId(), artifact.getBaseVersion()));
+            return ;
+        }
+
+        JsonObject node = createTreeNode(artifact);
+        JsonObject ancestor = tree;
+
+        List<String> artifactTrails = artifact.getDependencyTrail();
+        int trailsLength = artifactTrails.size();
+
+        // jump idx = 0
+        for (int idx = 1; idx < trailsLength; idx ++) {
+            String trailGATV = artifactTrails.get(idx);
+
+            boolean findAncestor = false;
+            JsonObject dependencies = ancestor.getAsJsonObject("dependencies");
+            for (Map.Entry<String, JsonElement> entry : dependencies.entrySet()) {
+                JsonObject dependency = entry.getValue().getAsJsonObject();
+                if (getGATV(dependency).equals(trailGATV)) {
+                    ancestor = dependency;
+                    findAncestor = true;
+                    break;
+                }
             }
-            return treeNode;
+
+            // dangling dependency
+            if (!findAncestor && idx != trailsLength - 1) {
+                getLog().error(String.format("ignore dangling dependency %s:%s:%s",
+                        artifact.getGroupId(), artifact.getArtifactId(), artifact.getBaseVersion()));
+                return ;
+            }
         }
 
-        List<DependencyNode> children = depNode.getChildren();
-        JsonObject dependencies = new JsonObject();
-        for(DependencyNode childDep : children) {
-            Artifact childArtifact = childDep.getArtifact();
-            JsonObject childNode = createJsonTree(childDep, treeNode.get("from").getAsJsonArray());
-            dependencies.add(String.format("%s:%s", childArtifact.getGroupId(), childArtifact.getArtifactId()), childNode);
-        }
-        treeNode.add("dependencies", dependencies);
-
-        return treeNode;
+        JsonObject dependencies = ancestor.getAsJsonObject("dependencies");
+        dependencies.add(node.get("name").getAsString(), node);
     }
 
-    private JsonObject createTreeNode(Artifact artifact, JsonArray ancestors) {
+    private JsonObject createTreeNode(Artifact artifact) {
         JsonObject treeNode = new JsonObject();
 
-        treeNode.addProperty("version", artifact.getVersion());
         treeNode.addProperty("name", String.format("%s:%s", artifact.getGroupId(), artifact.getArtifactId()));
 
-        JsonArray from = new JsonArray();
-        if(ancestors != null) {
-            from.addAll(ancestors);
+        treeNode.addProperty("version", artifact.getBaseVersion());
+
+        treeNode.addProperty("type", artifact.getType());
+
+        String scope = artifact.getScope();
+        treeNode.addProperty("scope", scope == null ? "compile" : scope);
+
+
+        treeNode.addProperty("gatvs", scope == null ?
+                String.format("%s:%s", artifact.toString(), "compile") : artifact.toString());
+
+        List<String> trails = artifact.getDependencyTrail();
+        if (trails == null) {
+            trails = new ArrayList<>();
         }
-        from.add(String.format("%s:%s@%s", artifact.getGroupId(), artifact.getArtifactId(), artifact.getVersion()));
-        treeNode.add("from", from);
+        treeNode.add("from", new Gson().toJsonTree(trails).getAsJsonArray());
+
+        treeNode.add("dependencies", new JsonObject());
 
         return treeNode;
+    }
+
+    private String getGATV(JsonObject node) {
+        return String.format("%s:%s:%s",
+                node.get("name").getAsString(),
+                node.get("type").getAsString(),
+                node.get("version").getAsString());
     }
 
     public JsonObject getTree() { return this.tree; }
+
+    private Log getLog() {
+        return log;
+    }
 }

@@ -24,16 +24,11 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoFailureException;
-import org.apache.maven.plugins.annotations.Component;
-import org.apache.maven.plugins.annotations.Mojo;
-import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.plugins.annotations.*;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.settings.Settings;
-import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.SessionData;
-import org.eclipse.aether.collection.DependencyCollectionException;
-import org.eclipse.aether.repository.RemoteRepository;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -44,23 +39,17 @@ import java.util.TreeSet;
 
 import static com.immomo.momosec.maven.plugins.Renderer.writeToFile;
 
-@Mojo(name = "test")
+@Mojo(name = "test",
+        requiresDependencyCollection = ResolutionScope.TEST,
+        defaultPhase = LifecyclePhase.GENERATE_SOURCES,
+        threadSafe = true )
 public class MosecTest extends AbstractMojo {
 
-    @Component
-    private RepositorySystem repositorySystem;
-
-    @Parameter(property = "project", required = true, readonly = true)
+    @Parameter(defaultValue = "${project}", required = true, readonly = true)
     private MavenProject project;
 
     @Parameter(defaultValue = "${repositorySystemSession}", readonly = true)
     private RepositorySystemSession repositorySystemSession;
-
-    @Parameter(defaultValue = "${project.remoteProjectRepositories}", readonly = true)
-    private List<RemoteRepository> remoteProjectRepositories;
-
-    @Parameter(defaultValue = "${project.remotePluginRepositories}", readonly = true)
-    private List<RemoteRepository> remotePluginRepositories;
 
     @Parameter(defaultValue = "${settings}", readonly = true, required = true)
     private Settings settings;
@@ -69,13 +58,19 @@ public class MosecTest extends AbstractMojo {
      * 威胁等级 [High|Medium|Low]
      */
     @Parameter(property = "severity", defaultValue = "High")
-    private String severityLevel;
+    private String severity;
 
     /**
-     * 仅检查直接依赖
+     * 检查传递依赖
      */
-    @Parameter(property = "onlyProvenance", defaultValue = "false")
-    private Boolean onlyProvenance;
+    @Parameter(property = "transitive", defaultValue = "true")
+    private Boolean transitive;
+
+    /**
+     * 依赖按scope过滤，逗号分割 [runtime|compile|provided|system|test]
+     */
+    @Parameter(property = "scope", defaultValue = "")
+    private String scope;
 
     /**
      * 发现漏洞即编译失败
@@ -90,16 +85,10 @@ public class MosecTest extends AbstractMojo {
     private String endpoint;
 
     /**
-     * 是否包含Provided Scope依赖
-     */
-    @Parameter(property = "includeProvidedDependency", defaultValue = "false")
-    private Boolean includeProvidedDependency;
-
-    /**
      * 输出依赖树到文件
      */
-    @Parameter(property = "outputDepToFile", defaultValue = "")
-    private String outputDepToFile;
+    @Parameter(property = "output", defaultValue = "")
+    private String output;
 
     /**
      * 仅分析依赖，不进行漏洞检查
@@ -107,10 +96,21 @@ public class MosecTest extends AbstractMojo {
     @Parameter(property = "onlyAnalyze", defaultValue = "false")
     private Boolean onlyAnalyze;
 
+    /**
+     * 跳过插件执行
+     */
+    @Parameter(property = "mosec.skip", defaultValue = "false")
+    private boolean skip;
+
     private static List<String> totalProjectsByGAV = null;
 
     @SuppressWarnings(value = {"unchecked"})
     public void execute() throws MojoFailureException {
+        if (skip) {
+            getLog().info( "Skipping Mosec plugin execution." );
+            return;
+        }
+
         String env_endpoint = System.getenv(Constants.MOSEC_ENDPOINT_ENV);
         if (env_endpoint != null) {
             endpoint = env_endpoint;
@@ -120,24 +120,7 @@ public class MosecTest extends AbstractMojo {
             throw new MojoFailureException(Constants.ERROR_ON_NULL_ENDPOINT);
         }
 
-        if (remoteProjectRepositories == null) {
-            remoteProjectRepositories = new ArrayList<>();
-        }
-
-        if (remotePluginRepositories == null) {
-            remotePluginRepositories = new ArrayList<>();
-        }
-
         try {
-            for (RemoteRepository remoteProjectRepository : remoteProjectRepositories) {
-                getLog().debug("Remote project repository: " + remoteProjectRepository);
-            }
-            for (RemoteRepository remotePluginRepository : remotePluginRepositories) {
-                getLog().debug("Remote plugin repository: " + remotePluginRepository);
-            }
-            List<RemoteRepository> remoteRepositories = new ArrayList<>(remoteProjectRepositories);
-            remoteRepositories.addAll(remotePluginRepositories);
-
             SessionData sessionData = repositorySystemSession.getData();
             if (sessionData.get("collectTree") == null) {
                 sessionData.set("collectTree", new ArrayList<String>());
@@ -152,11 +135,9 @@ public class MosecTest extends AbstractMojo {
 
             ProjectDependencyCollector collector = new ProjectDependencyCollector(
                     project,
-                    repositorySystem,
-                    repositorySystemSession,
-                    remoteRepositories,
-                    includeProvidedDependency,
-                    onlyProvenance
+                    getLog(),
+                    scope,
+                    transitive
             );
             collector.collectDependencies();
             JsonObject projectTree = collector.getTree();
@@ -164,14 +145,14 @@ public class MosecTest extends AbstractMojo {
             getLog().debug(jsonProjectTree);
 
             collectTree.add(jsonProjectTree);
-            collectGAV.add(String.format(
-                    "%s:%s", projectTree.get("name").getAsString(), projectTree.get("version").getAsString()));
+            collectGAV.add(String.format("%s:%s",
+                    projectTree.get("name").getAsString(), projectTree.get("version").getAsString()));
             if (Boolean.TRUE.equals(onlyAnalyze)) {
                 if (this.isAnalyzeTotalFinished(collectGAV)
-                        && outputDepToFile != null
-                        && !"".equals(outputDepToFile)
+                        && output != null
+                        && !"".equals(output)
                 ) {
-                    writeToFile(outputDepToFile, collectTree);
+                    writeToFile(output, collectTree);
                 }
 
                 getLog().info("onlyAnalyze mode, Done.");
@@ -180,7 +161,7 @@ public class MosecTest extends AbstractMojo {
 
             projectTree.addProperty("type", Constants.BUILD_TOOL_TYPE);
             projectTree.addProperty("language", Constants.PROJECT_LANGUAGE);
-            projectTree.addProperty("severityLevel", severityLevel);
+            projectTree.addProperty("severity", severity);
 
             HttpPost request = new HttpPost(endpoint);
             request.addHeader("content-type", Constants.CONTENT_TYPE_JSON);
@@ -207,15 +188,13 @@ public class MosecTest extends AbstractMojo {
                 throw new NetworkErrorException(Constants.ERROR_ON_API);
             }
 
-            if (outputDepToFile != null && !"".equals(outputDepToFile)) {
-                writeToFile(outputDepToFile, collectTree);
+            if (output != null && !"".equals(output)) {
+                writeToFile(output, collectTree);
             }
 
             Renderer renderer = new Renderer(getLog(), failOnVuln);
             renderer.renderResponse(responseJson);
 
-        } catch (DependencyCollectionException e) {
-            throw new MojoFailureException(e.getMessage(), e.fillInStackTrace());
         } catch (MojoFailureException e) {
             throw e;
         } catch (Exception e) {

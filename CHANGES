@@ -2,6 +2,15 @@ Changelog
 
 =========
 
+Version 2.0.0
+
+- feature  Change parameter `severityLevel` to `severity`, `onlyProvenance` to `transitive`,
+           `outputDepToFile` to `output`
+- feature  Add `scope`, `mosec.skip` parameter
+- feature  Remove `includeProvidedDependency` parameter
+- feature  Add `type`, `scope`, `gatvs` to dependency node
+- feature  Change dependency node `from` field value from g:a:v to g:a:t:v
+
 Version 1.0.11
 
 - feature  Use maven SessionData save multi module project tree

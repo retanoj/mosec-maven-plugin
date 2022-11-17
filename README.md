@@ -2,23 +2,14 @@
 
 用于检测maven项目的第三方依赖组件是否存在安全漏洞。
 
-该项目是基于 [snyk-maven-plugin](https://github.com/snyk/snyk-maven-plugin.git) 的二次开发。
 
-
-
-## 关于我们
-
-Website：https://security.immomo.com
-
-WeChat:
-
-<img src="https://momo-mmsrc.oss-cn-hangzhou.aliyuncs.com/img-1c96a083-7392-3b72-8aec-bad201a6abab.jpeg" width="200" hegiht="200" align="center" /><br>
-
+v1.0.0版本基于eclipse-aether，对依赖解析存在诸多问题。
+v2.0.0版改用Maven Mojo `requiresDependencyCollection` 做依赖解析，插件只做依赖提取与分析。
 
 
 ## 版本要求
 
-Maven >= 3.1
+Maven >= 3.2
 
 
 
@@ -32,7 +23,7 @@ Maven >= 3.1
 <pluginRepositories>
   <pluginRepository>
       <id>gh</id>
-      <url>https://raw.githubusercontent.com/momosecurity/mosec-maven-plugin/master/mvn-repo/</url>
+      <url>https://raw.githubusercontent.com/retanoj/mosec-maven-plugin/master/mvn-repo/</url>
   </pluginRepository>
 </pluginRepositories>
 ```
@@ -53,7 +44,7 @@ Maven >= 3.1
       <pluginRepositories>
         <pluginRepository>
             <id>gh</id>
-            <url>https://raw.githubusercontent.com/momosecurity/mosec-maven-plugin/master/mvn-repo/</url>
+            <url>https://raw.githubusercontent.com/retanoj/mosec-maven-plugin/master/mvn-repo/</url>
         </pluginRepository>
       </pluginRepositories>
     </profile>
@@ -66,23 +57,22 @@ Maven >= 3.1
 
 
 
+
 ## 使用
 
-首先运行 [MOSEC-X-PLUGIN Backend](https://github.com/momosecurity/mosec-x-plugin-backend.git)
 
 #### 命令行使用
 ```
 > cd your_maven_project_dir/
 
 > MOSEC_ENDPOINT=http://127.0.0.1:9000/api/plugin \
-  mvn com.immomo.momosec:mosec-maven-plugin:1.0.7:test \
-  -DonlyProvenance=true \
+  mvn com.immomo.momosec:mosec-maven-plugin:2.0.0:test \
   -Dseverity=High
 
 // 或简化方式
 
 > MOSEC_ENDPOINT=http://127.0.0.1:9000/api/plugin \
-  mvn mosec:test -DonlyProvenance=true -Dseverity=High
+  mvn mosec:test -Dseverity=High
 ```
 
 #### 项目中使用
@@ -94,7 +84,7 @@ Maven >= 3.1
     <plugin>
         <groupId>com.immomo.momosec</groupId>
         <artifactId>mosec-maven-plugin</artifactId>
-        <version>1.0.8</version>
+        <version>2.0.0</version>
         <executions>
             <execution>
                 <id>test</id>
@@ -106,7 +96,6 @@ Maven >= 3.1
         <configuration>
             <endpoint>http://127.0.0.1:9000/api/plugin</endpoint>
             <severityLevel>High</severityLevel>
-            <onlyProvenance>true</onlyProvenance>
             <failOnVuln>true</failOnVuln>
         </configuration>
     </plugin>
@@ -124,59 +113,39 @@ mosec:test
 
   Available parameters:
 
+    severity (Default: High)
+      威胁等级 [High|Medium|Low]
+      User property: severity
+    
+    transitive (Default: true)
+      检查传递依赖
+      User property: transitive     
+    
+    scope (Default: "")
+      依赖按scope过滤，逗号分割 [runtime|compile|provided|system|test]
+      User property: scope
+           
+    failOnVuln (Default: true)
+      发现漏洞即编译失败
+      User property: failOnVuln
+    
     endpoint
       上报API
       User property: endpoint
 
-    failOnVuln (Default: true)
-      发现漏洞即编译失败
-      User property: failOnVuln
-
-    includeProvidedDependency (Default: false)
-      是否包含Provided Scope依赖
-      User property: includeProvidedDependency
+    output (Default: )
+      输出依赖树到文件
+      User property: output
 
     onlyAnalyze (Default: false)
-      仅分析依赖，不上报
+      仅分析不上报
       User property: onlyAnalyze
 
-    onlyProvenance (Default: false)
-      仅检查直接依赖
-      User property: onlyProvenance
+    mosec.skip (Default: false)
+      跳过插件执行
+      User property: mosec.skip
 
-    outputDepToFile (Default: )
-      输出依赖树到文件。设置-DonlyAnalyze=true仅输出依赖树，否则输出依赖树及漏洞检查结果
-      User property: outputDepToFile
-
-    severityLevel (Default: High)
-      威胁等级 [High|Medium|Low]
-      User property: severity
 ```
-
-
-
-## 使用效果
-
-以 src/test/resources/projects/vuln-project 项目为例。
-
-[WARNING] 部分给出漏洞警告，Path: 为漏洞依赖链，Fix version 为组件安全版本。
-
-程序返回值为1，表示发现漏洞。返回值为0，即为未发现问题。
-
-![usage](./static/usage.jpg)
-
-
-
-## 检测原理
-
-MOSEC-MAVEN-PLUGIN使用`org.apache.maven:maven-core`组件中提供的`aether-api`提取依赖并构建依赖树。
-
-该方法可以准确提取maven项目所使用的依赖，以及确定的依赖版本。
-
-最终依赖树会交由 [MOSEC-X-PLUGIN-BACKEND](https://github.com/momosecurity/mosec-x-plugin-backend.git) 检测服务进行检测，并返回结果。
-
-相关数据结构请参考 MOSEC-X-PLUGIN-BACKEND [README.md](https://github.com/momosecurity/mosec-x-plugin-backend/blob/master/README.md).
-
 
 
 ## 开发
@@ -194,7 +163,7 @@ MOSEC-MAVEN-PLUGIN使用`org.apache.maven:maven-core`组件中提供的`aether-a
 4.在另一个maven工程中执行如下命令
 
 ```shell script
-> mvnDebug com.immomo.momosec:mosec-maven-plugin:1.0.8:test
+> mvnDebug com.immomo.momosec:mosec-maven-plugin:2.0.0:test
 ```
 
 5.回到Intellij中，下断点，开始Debug
