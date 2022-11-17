@@ -15,6 +15,8 @@
  */
 package com.immomo.momosec.maven.plugins.stubs;
 
+import org.apache.maven.artifact.Artifact;
+import org.apache.maven.artifact.DefaultArtifact;
 import org.apache.maven.model.Build;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
@@ -23,8 +25,7 @@ import org.apache.maven.project.MavenProject;
 import org.codehaus.plexus.util.ReaderFactory;
 
 import java.io.File;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 public class MyTestProjectStub extends MavenProjectStub {
 
@@ -36,8 +37,6 @@ public class MyTestProjectStub extends MavenProjectStub {
         try {
             model = pomReader.read(ReaderFactory.newXmlReader(new File( getBasedir() + "/pom.xml")));
             setModel(model);
-            MavenProject mavenProject = new MavenProject(model);
-            this.setParent(mavenProject);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -49,6 +48,76 @@ public class MyTestProjectStub extends MavenProjectStub {
         setName(model.getName());
         setUrl(model.getUrl());
         setPackaging(model.getPackaging());
+
+        setArtifact(new DefaultArtifact(
+                getGroupId(), getArtifactId(), getVersion(), "", "jar", "", null));
+        Set<Artifact> artifacts = new Set<Artifact>() {
+            @Override
+            public int size() {
+                return 0;
+            }
+
+            @Override
+            public boolean isEmpty() {
+                return false;
+            }
+
+            @Override
+            public boolean contains(Object o) {
+                return false;
+            }
+
+            @Override
+            public Iterator<Artifact> iterator() {
+                return null;
+            }
+
+            @Override
+            public Object[] toArray() {
+                return new Object[0];
+            }
+
+            @Override
+            public <T> T[] toArray(T[] a) {
+                return null;
+            }
+
+            @Override
+            public boolean add(Artifact artifact) {
+                return false;
+            }
+
+            @Override
+            public boolean remove(Object o) {
+                return false;
+            }
+
+            @Override
+            public boolean containsAll(Collection<?> c) {
+                return false;
+            }
+
+            @Override
+            public boolean addAll(Collection<? extends Artifact> c) {
+                return false;
+            }
+
+            @Override
+            public boolean retainAll(Collection<?> c) {
+                return false;
+            }
+
+            @Override
+            public boolean removeAll(Collection<?> c) {
+                return false;
+            }
+
+            @Override
+            public void clear() {
+
+            }
+        };
+        setArtifacts(artifacts);
 
 
         Build build = new Build();

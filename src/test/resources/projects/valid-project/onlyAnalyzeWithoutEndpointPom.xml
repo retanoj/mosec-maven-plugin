@@ -33,15 +33,12 @@
           <project implementation="com.immomo.momosec.maven.plugins.stubs.MyTestProjectStub"/>
           <settings implementation="com.immomo.momosec.maven.plugins.stubs.MyTestProjectSettingsStub"/>
           <repositorySystemSession implementation="com.immomo.momosec.maven.plugins.stubs.MyTestProjectSystemSessionStub" />
-          <!-- The defined stubs end -->
-          <remoteProjectRepositories></remoteProjectRepositories>
-          <remotePluginRepositories></remotePluginRepositories>
 
-          <severityLevel>High</severityLevel>
-          <failOnVuln>False</failOnVuln>
-          <onlyProvenance>true</onlyProvenance>
+          <severity>High</severity>
+          <failOnVuln>false</failOnVuln>
           <onlyAnalyze>true</onlyAnalyze>
-          <includeProvidedDependency>false</includeProvidedDependency>
+          <transitive>true</transitive>
+          <scope></scope>
         </configuration>
       </plugin>
     </plugins>
