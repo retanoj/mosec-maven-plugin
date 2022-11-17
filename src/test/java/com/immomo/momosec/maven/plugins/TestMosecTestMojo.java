@@ -51,7 +51,7 @@ import static org.powermock.api.mockito.PowerMockito.*;
 
 
 @RunWith(PowerMockRunner.class)
-@PrepareForTest(value = {HttpClientHelper.class, MosecTest.class})
+@PrepareForTest(value = {HttpClientHelper.class, MosecTestMojo.class})
 @PowerMockIgnore({
         "com.sun.org.apache.xerces.*",
         "javax.xml.*",
@@ -59,7 +59,7 @@ import static org.powermock.api.mockito.PowerMockito.*;
         "org.w3c.*",
         "javax.management.*"
 })
-public class TestMosecTest {
+public class TestMosecTestMojo {
 
     @Rule
     public MojoRule rule = new MojoRule();
@@ -97,22 +97,22 @@ public class TestMosecTest {
     public void validProjectTest() throws Exception {
         File pom = getPom("valid-project", "pom.xml");
 
-        MosecTest mosecTest = (MosecTest)this.rule.lookupMojo("test", pom);
-        Assert.assertNotNull(mosecTest);
+        MosecTestMojo mosecTestMojo = (MosecTestMojo)this.rule.lookupMojo("test", pom);
+        Assert.assertNotNull(mosecTestMojo);
     }
 
-    private MosecTest getMockMosecTest(File pom) throws Exception {
-        MosecTest mosecTest = spy((MosecTest) this.rule.lookupMojo("test", pom));
+    private MosecTestMojo getMockMosecTest(File pom) throws Exception {
+        MosecTestMojo mosecTestMojo = spy((MosecTestMojo) this.rule.lookupMojo("test", pom));
 
         RepositorySystemSession mockRepositorySystemSession = mock(RepositorySystemSession.class);
 
-        when(mosecTest.getLog()).thenReturn(mock(Log.class));
+        when(mosecTestMojo.getLog()).thenReturn(mock(Log.class));
         when(mockRepositorySystemSession.getData()).thenReturn(new DefaultSessionData());
-        when(mosecTest, "isAnalyzeTotalFinished", any()).thenReturn(false);
+        when(mosecTestMojo, "isAnalyzeTotalFinished", any()).thenReturn(false);
 
-        Field repoSystemSession = mosecTest.getClass().getDeclaredField("repositorySystemSession");
+        Field repoSystemSession = mosecTestMojo.getClass().getDeclaredField("repositorySystemSession");
         repoSystemSession.setAccessible(true);
-        repoSystemSession.set(mosecTest, mockRepositorySystemSession);
+        repoSystemSession.set(mosecTestMojo, mockRepositorySystemSession);
 
         DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
         dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
@@ -137,32 +137,32 @@ public class TestMosecTest {
                 String value = configItem.getTextContent();
 
                 if (value != null) {
-                    Field field = mosecTest.getClass().getDeclaredField(name);
+                    Field field = mosecTestMojo.getClass().getDeclaredField(name);
                     field.setAccessible(true);
                     if (field.getType() == String.class) {
-                        field.set(mosecTest, value);
+                        field.set(mosecTestMojo, value);
                     } else if (field.getType() == Boolean.class) {
-                        field.set(mosecTest, Boolean.parseBoolean(value));
+                        field.set(mosecTestMojo, Boolean.parseBoolean(value));
                     }
                 }
             }
         }
 
-        return mosecTest;
+        return mosecTestMojo;
     }
 
     @Test
     public void onlyAnalyzeWithoutEndpointPom() throws Exception {
         File pom = getPom("valid-project", "onlyAnalyzeWithoutEndpointPom.xml");
-        MosecTest mosecTest = getMockMosecTest(pom);
-        mosecTest.execute();
+        MosecTestMojo mosecTestMojo = getMockMosecTest(pom);
+        mosecTestMojo.execute();
     }
 
     @Test
     public void onlyAnalyzeWithEndpointPom() throws Exception {
         File pom = getPom("valid-project", "onlyAnalyzeWithEndpointPom.xml");
-        MosecTest mosecTest = getMockMosecTest(pom);
-        mosecTest.execute();
+        MosecTestMojo mosecTestMojo = getMockMosecTest(pom);
+        mosecTestMojo.execute();
     }
 
     @Test
@@ -179,7 +179,7 @@ public class TestMosecTest {
     }
 
     private void failOnVulnPomRunner(File pom) throws Exception {
-        MosecTest mosecTest = getMockMosecTest(pom);
+        MosecTestMojo mosecTestMojo = getMockMosecTest(pom);
 
         HttpClientHelper mockHttpClientHelper = mock(HttpClientHelper.class);
         HttpClient mockHttpClient = mock(HttpClient.class);
@@ -192,7 +192,7 @@ public class TestMosecTest {
         when(mockHttpClient.execute(any())).thenReturn(mockHttpResponse);
         when(mockHttpResponse.getStatusLine()).thenReturn(mockStatusLine);
         when(mockStatusLine.getStatusCode()).thenReturn(200);
-        when(mosecTest, "isAnalyzeTotalFinished", any()).thenReturn(false);
+        when(mosecTestMojo, "isAnalyzeTotalFinished", any()).thenReturn(false);
         String vuln = "{\"ok\":false, \"dependencyCount\": 2, \"vulnerabilities\":[{" +
                 "\"severity\": \"High\"," +
                 "\"title\": \"Fastjson RCE\"," +
@@ -205,7 +205,7 @@ public class TestMosecTest {
         when(mockHttpResponse.getEntity()).thenReturn(mockHttpEntity);
         when(mockHttpEntity.getContent()).thenReturn(httpResponseContent);
 
-        mosecTest.execute();
+        mosecTestMojo.execute();
     }
 
     public File getPom(String baseDir, String fn) throws IOException {

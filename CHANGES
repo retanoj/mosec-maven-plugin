@@ -10,6 +10,7 @@ Version 2.0.0
 - feature  Remove `includeProvidedDependency` parameter
 - feature  Add `type`, `scope`, `gatvs` to dependency node
 - feature  Change dependency node `from` field value from g:a:v to g:a:t:v
+- feature  Add `resolve` goal
 
 Version 1.0.11
 

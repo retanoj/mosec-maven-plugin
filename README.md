@@ -109,8 +109,12 @@ Maven >= 3.2
 ```shell script
 > mvn mosec:help -Ddetail=true
 
-mosec:test
+mosec:resolve
+  收集依赖，解析POM文件，并解析依赖 此goal会下载jar包
 
+mosec:test
+  收集依赖，解析POM文件
+  
   Available parameters:
 
     severity (Default: High)
